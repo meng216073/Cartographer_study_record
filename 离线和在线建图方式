@@ -1,0 +1,23 @@
+cartographer可以在线建图和离线建图，离线建图使用的是.bag文件，通过激光雷达记录运行过程中话题的数据进行建图；在线建图也就是实时建图是激光雷达一边运行一边建图。
+1.离线建图
+首先需要对数据进行保存。需要对发布的话题进行存储，相关指令为：
+rosbag record [topic]:记录指定的topic发布的数据
+rosbag record -a:记录当前所有topic的数据
+rosbag record -O [wenjian ming] [topic]:-O后面是具体的.bag文件名，可以用于给指定的topic数据起名字。
+rosbag info wenjian.bag:显示保存的bag文件信息
+rosbag play wenjian.bag:回放保存的.bag文件数据
+///////////////////////////////////
+当对数据进行保存之后在cartographer中运行.bag文件的相关指令为：
+roslaunch cartographer_ros demo_backpack_2d.launch  //运行2d建图launch文件
+bag_filename:=/home/dmchen/slam_ws/src/cartographer_ros/cartographer_ros/bag/cartographer_paper_deutsches_museum.bag //指定要运行的bag文件名
+
+roslaunch cartographer_ros demo_backpack_3d.launch   //运行3d数据
+bag_filename:=${HOME}/Downloads/cartographer_3d_deutsches_museum.bag
+其他的类型数据参见教程：https://www.jianshu.com/p/9922a51ce38f
+
+2.在线建图
+无论是离线建图还是在线实时建图，通过对代码分析主要设计三个文件分别为：
+demo.launch:定义需要启动的节点和程序
+demo.lua:包含相应的参数设置，使用的什么类型的传感器和相应的配置文件。
+demo.rviz:对显示的设置，看看rviz最终显示的内容。
+在进行在线建图是需要重新写这三个文件，只要参考官方给的demo即可。离线情况下直接用。
