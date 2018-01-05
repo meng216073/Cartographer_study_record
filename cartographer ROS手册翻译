@@ -1,0 +1,569 @@
+转载网址：http://blog.csdn.net/qq_26617115/article/details/78902371
+Cartographer ROS Integration
+一、Configuration配置
+二、调试
+2.1 两个系统
+2.2 局部SLAM
+2.3 验证
+三、ROS API
+3.1 Cartographer 节点
+3.2 离线节点
+3.3 占据栅格节点
+四、包含的资源？（Assets writer）
+4.1 采样指南
+4.2 配置
+4.3 点云的第一人称视角的可视化
+五、demos
+5.1 仅局部的
+5.2 Revo LDS
+5.3 PR2
+5.4 Taurob Tracker
+六、公共数据
+6.1 2D Cartographer Backpack--德国博物馆
+6.2 3D Cartographer Backpack--德国博物馆
+6.3 PR2 柳树车库
+七、FAQ
+7.1 为什么3D bags里的激光数据比VLP-16最高的20HZ的转速还要高？
+7.2 为什么IMU数据对于3D SLAM是必须的，对于2D SLAM却不是？
+7.3 若没有RVIZ的话，如何使用cartographer_ros?
+7.4 如何解决“You called InitGoogleLogging() twice!”错误？
+
+
+Cartographer 是一个可以在多个平台和传感器配置中提供实时SLAM的系统。
+
+这个项目提供了Cartographer 的ROS集成包。
+
+系统要求
+见Cartographer’s系统要求。
+
+支持下面的ROS版本：
+
+~Indigo
+
+~Kinetic
+
+生成和安装
+建议使用wstool和rosdep，为了能快速安装，建议也使用Ninja。
+
+
+
+# Install wstool and rosdep.
+
+sudo apt-get update
+
+sudo apt-get install -y python-wstool python-rosdep ninja-build
+
+# Create a new workspace in 'catkin_ws'.
+
+mkdir catkin_wscd catkin_ws
+
+wstool init src
+
+# Merge the cartographer_ros.rosinstall file and fetch code for dependencies.
+
+wstool merge -t src https://raw.githubusercontent.com/googlecartographer/cartographer_ros/master/cartographer_ros.rosinstall
+
+wstool update -t src
+
+# Install proto3.
+
+src/cartographer/scripts/install_proto3.sh
+
+# Install deb dependencies.# The command 'sudo rosdep init' will print an error if you have already# executed it since installing ROS. This error can be ignored.
+
+sudo rosdep init
+
+rosdep update
+
+rosdep install --from-paths src --ignore-src --rosdistro=${ROS_DISTRO} -y
+
+# Build and install.
+
+catkin_make_isolated --install --use-ninjasource install_isolated/setup.bash
+
+运行demos
+现在Cartographer和Cartographer的ROS集成包已经安装，例程中的的Backpack(德国博物馆2D或3D数据包)也已经下载到指定的路径~/Download，使用roslaunch启动demo:
+
+ 
+
+# Download the 2D backpack example bag.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/backpack_2d/cartographer_paper_deutsches_museum.bag
+
+# Launch the 2D backpack demo.
+
+roslaunch cartographer_ros demo_backpack_2d.launch bag_filename:=${HOME}/Downloads/cartographer_paper_deutsches_museum.bag
+
+# Download the 3D backpack example bag.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/backpack_3d/b3-2016-04-05-14-14-00.bag
+
+# Launch the 3D backpack demo.
+
+roslaunch cartographer_ros demo_backpack_3d.launch bag_filename:=${HOME}/Downloads/b3-2016-04-05-14-14-00.bag
+
+ 
+
+Launch文件自动启动roscore和rviz，更多的局部的和种类繁多的机器人的demo参考Demos。
+
+一、Configuration配置
+两点注意：
+
+1、这个Cartographer的ROS包使用了TF2，因此所有的坐标系的名称（包含下划线的小写字符）都是唯一的，不能有前缀或斜杠，参考常用的坐标系文档REP_105。
+
+2、这个Cartographer的ROS包的topic名字作为基本名字（参考ROS names），这意味着需要用户进行remap或将它们放入命名空间中。
+
+以下是此包的顶层选项，所有的这些都需要在Lua的配置文件中指定：
+
+map_frame
+
+用来发布子地图的ROS坐标系ID，位姿的父坐标系，通常是“map”。
+
+tracking_frame
+
+SLAM算法跟随的坐标系ID，如果使用了IMU，应该是IMU的位置，尽管它可能转动了，常用的选择是“imu_link”。
+
+published_frame
+
+作为发布位置的子坐标系的ROS坐标系ID，对于“odom”例程，如果系统的其他地方提供“odom”坐标系，那么“odom”在map_frame中的位置将会被发布，否则，设置为“base_link”即可。
+
+odom_frame
+
+“provide_odom_frame”为真时使用，位于“published_frame ”和“map_frame”之间，用来发布本地SLAM结果（非闭环），通常是“odom”。
+
+provide_odom_frame
+
+如果使能，这个局部的，非闭环的，连续的“odom_frame ”在“map_frame”中的位置将被发布。
+
+use_odometry
+
+如果使能，将订阅nav_msgs/Odometry类型的topic “odom”，这种情况下，必须提供里程计，而且里程计的信息将被包含在SLAM中。
+
+num_laser_scans
+
+订阅的laser scan topics的个数，对于单个激光，订阅sensor_msgs/LaserScan类型的“scan”topic，对于多个激光，topics为“scan_1”, “scan_2”...。
+
+num_multi_echo_laser_scans
+
+订阅多回波技术laser scan topics的个数，对于单个激光，订阅sensor_msgs/MultiEchoLaserScan类型的“echoes”topic，对于多个激光，topics为“echoes_1”, “echoes_2”...。
+
+num_subdivisions_per_laser_scan
+
+接收到的（多回波）laser scan中分离出来的点云的个数，分割scan能够保证在激光设备移动的过程中scans不弯曲变形。有相应的轨迹生成器选项可以将分离的scans累积到点云中，用来进行scan matching。
+
+num_point_clouds
+
+订阅的点云topics 的个数，对于单个测距仪，订阅sensor_msgs/PointCloud2类型的“points2”topic，对于多个测距仪，topics为“points2_1”, “points2_2”...。
+
+lookup_transform_timeout_sec
+
+使用tf2进行转换搜素的超时时间的秒数。
+
+submap_publish_period_sec
+
+发布submap 位置的间隔秒数，如0.3s。
+
+pose_publish_period_sec
+
+发布位置的间隔秒数，如5e-3对应200Hz。
+
+trajectory_publish_period_sec
+
+发布轨迹标记的间隔秒数，如30e-3对应30ms。
+
+二、调试
+很不幸，对cartographer进行调优很困难。这个系统有相当多的相互影响的参数。
+
+这个调试说明试图解释在具体例子上的一些原则。
+
+2.1 两个系统
+Cartographer可以看做是两个分离的，却相关的系统。一个叫做局部SLAM（有时候也叫作前端），它的作用是构建一个局部一致的submaps 集，但是它会随时间的推移而变化，有关的它的大部分选项都能在相对应的trajectory_builder_2d.lua或trajectory_builder_3d.lua中找到。
+
+另一个系统叫做全局SLAM(有时候也叫作后端)，它在后台线程中运行，主要作用是找到闭环的约束条件，通过扫描submaps 来完成scan-matching。也结合其他的传感器数据以获得更高水平的视图，确定最一致的全局解决方案。在3D模式下，还会尝试找到重力的方向，有关的大部分选项都能在pose_graph.lua中找到。
+
+更抽象一点来说，局部SLAM是生成良好的submaps ，全局SLAM是把它们联系在一起。
+
+2.2 调试局部SLAM
+对于这个例子，我们将从我们的测试数据集中找到cartographer commit aba4575 、cartographer_ros commit 99c23b6和b2-2016-04-27-12-31-41.bag。
+
+在我们的初始配置中，我们看到在这个包的早期就有一些滑动，这是因为这个包经过了德国博物馆的一个斜坡，这违反了平面地板的二维假设。在激光扫描数据中可以看到相矛盾的信息被传递给SLAM。但这一下滑也表明，我们对点云的匹配程度过高，而且对其他传感器的忽视也相当强烈。我们的目标是通过调优来改善情况。如果我们只看这个特定的submaps，那么错误就只包含在这个submaps中。我们也看到，随着时间的推移，全局SLAN会发现发生这些奇怪的情形，并能部分的进行纠正，然而这些有问题的submaps就永远有问题了。 由于这儿的问题是在submaps中有滑动，这是局部SLAM的问题，所以我们可以先关掉全局SLAM,以免影响我们调优。
+
+POSE_GRAPH.optimize_every_n_nodes = 0
+
+submaps的正确尺寸
+
+随着时间的推移，只有闭环才能解决局部SLAM的这种漂移。submaps必须足够小，这样它们内部的偏移就会低于分辨率，因此它们在局部是正确的。另一方面，它应该足够大，，保证闭环能够正常工作。 submaps的尺寸通过TRAJECTORY_BUILDER_2D.submaps.num_range_data进行配置。通过查看这个示例的各个submaps，它们已经很好地适应了这两个约束条件，因此我们假设这个参数已经很好地进行了调整。
+
+扫描匹配器（ScanMatcher）的选择
+
+局部SLAM背后的理念是使用除了测距仪之外的传感器数据来预测下一个扫描应该被插入到submap的位置。然后，CeresScanMatcher将此作为先验，并找到扫描匹配到的submap的最佳位置。它通过插入submap 和子像素来对齐扫描。这是快速的，但是不能修复比submaps的分辨率大得多的错误。如果你的传感器设置和时间是合理的，只使用CeresScanMatcher通常是最好的选择。
+
+如果你没有其他传感器或你不相信它们,Cartographer 还提供了一个RealTimeCorrelativeScanMatcher。它使用的方法类似于在闭环中对submap进行匹配，而不是与当前的submap相匹配。然后最好的匹配用作CeresScanMatcher的先验。这个扫描设备非常昂贵并且基本上不顾除测距仪外其他传感器的任何信号，但它在特征丰富的环境中是很稳定的。
+
+相关的扫描匹配器的调优
+
+待完善
+
+CeresScanMatcher的调优
+
+在我们的例程中，扫描匹配器可以在不影响匹配值的情况下，自由的向前或向后移动这个匹配。我们通过让扫描匹配器为之前获得的偏离付出更高的代价来避免这种情形，控制这个的两个参数是rotation_weight和TRAJECTORY_BUILDER_2D.ceres_scan_matcher.translation_weight。值越高，从之前的结果中移除它就需要越高的代价。换句话说：扫描匹配器在另一个位置必须生成一个更高的匹配值才能被接受。
+
+出于教学的目的，让我们从先前的结果中制造一个相当大的偏离：
+
+TRAJECTORY_BUILDER_2D.ceres_scan_matcher.translation_weight = 1e3
+
+这使得优化器能够很好的充分的覆盖扫描结果，这一结果与之前的情况很接近，但与深度传感器不一致，而且明显是损坏的。对这个值进行试验会得到更好的结果，结果是2e2。
+
+在这里，扫描匹配器使用旋转来稍微弄乱结果。将rotation_weight设置为4e2，给我们带来了一个合理的结果。
+
+2.3 验证
+为了确保我们没有对这个特定的问题进行过度优化，我们需要对其他收集到的数据进行配置。在这种情况下，例程b2-2016-04-05-14-44-52.bag的开始阶段，新的参数确实显示了下滑，所以我们不得不降低 translation_weight 到1e2。对于我们想解决的问题，这种设置是的效果更差，但是不再下滑了，在检验它们之前，我们将所有的权重都标准化，因为它们只有相对意义，这个调优的结果在 PR 428。一般来说，总是试着调优一个平台，而不是一个特定的包。
+
+ 
+
+三、ROS API
+3.1 Cartographer 节点
+Cartographer _node用的是在线的实时的SLAM。
+
+命令行标志
+
+待确认(hrapp):这些不应该被删除吗？这看起来像是到处都在重复的记录。
+
+–configuration_directory
+
+首先搜寻的配置文件的目录，然后是Cartographer 的安装目录允许包含的文件
+
+–configuration_basename
+
+配置文件（如backpack_3d.lua）的基本名称（也就是不包含任何目录前缀）
+
+–map_filename
+
+从磁盘加载的Cartographer 状态文件。允许从之前的状态中增加新的SLAM轨迹，但是被加载的状态是被冻结的。
+
+Subscribed topics
+
+以下的范围数据topics是互斥的。至少需要一个范围数据源。
+
+scan (sensor_msgs/LaserScan)
+
+支持二维和三维(例如，使用轴向旋转的平面激光扫描仪)。如果num_laser_scans在Configuration配置为1，那么这个topic 将被用SLAM的输入。如果num_laser_scans大于1，那么多个被编号的scan topics (比如scan1、scan2、scan3、……直到并包括num_laser_scans)将被用作SLAM的输入。
+
+echoes (sensor_msgs/MultiEchoLaserScan)
+
+支持二维和三维(例如，使用轴向旋转的平面激光扫描仪)。如果 num_multi_echo_laser_scans在Configuration配置为1，那么这个topic 将被用SLAM的输入。只使用第一个echo。如果num_multi_echo_laser_scans大于1，那么多个被编号的echoes topics (比如echoes_1、echoes_2、echoes_3、……直到并包括num_multi_echo_laser_scans)将被用作SLAM的输入。
+
+points2 (sensor_msgs/PointCloud2)
+
+如果 num_point_clouds在Configuration配置为1，那么这个topic 将被用SLAM的输入。如果num_point_clouds大于1，那么多个被编号的points2 topics (比如points2_1、points2_2、points2_3、……直到并包括num_point_clouds)将被用作SLAM的输入。
+
+还可以提供以下附加的传感器数据topics。
+
+imu (sensor_msgs/Imu)
+
+支持2D(可选)和3D(必需)。这个topic 将被用作SLAM的输入。
+
+odom (nav_msgs/Odometry)
+
+支持2D(可选)和3D(可选)。如果在Configuration中使能了use_odometry，那么这个topic将被用作SLAM的输入。
+
+Published topics
+scan_matched_points2 (sensor_msgs/PointCloud2)
+用来进行 scan-to-submap匹配的点云，这个云可以根据配置进行滤波和投影。
+submap_list (cartographer_ros_msgs/SubmapList)
+
+所有轨迹的所有submaps的列表，包含有没给submap的姿态和最新的版本号，
+
+Services
+submap_query (cartographer_ros_msgs/SubmapQuery)
+
+获取所请求的submap。
+
+start_trajectory (cartographer_ros_msgs/StartTrajectory)
+
+通过将传感器topics和轨迹选项指定为原始的二进制编码格式，开始另一个轨迹。返回一个已分配的轨迹ID。
+
+finish_trajectory (cartographer_ros_msgs/FinishTrajectory)
+
+通过运行最终的优化，完成给定轨迹ID的轨迹。
+
+write_state (cartographer_ros_msgs/WriteState)
+
+将当前的内部状态保存为指定的文件名并写入磁盘，这个文件通常以~/.ros结尾，若设置了ROS_HOME，则以设置的ROS_HOME结尾。该文件可以作为assets_writer_main的输入，用于生成诸如概率栅格、x射线或PLY文件等。
+
+需要的tf Transforms
+
+从所有传入的传感器数据帧转换到配置的tracking_frame和published_frame都必须是可用的。通常情况下，这些都是由 robot_state_publisher或static_transform_publisher定期发布的。
+
+提供的tf Transforms
+
+总是提供配置的map_frame和published_frame之间的转换。
+
+如果在配置中使能provide_odom_frame，就会提供配置的odom_frame和published_frame 之间的连续(即不受闭环的影响)的转换。
+
+3.2 离线节点
+offline_node是使用传感器数据包进行SLAM最快速的方法。它不监听任何topics，而是从命令行中提供的一组包中读取TF和传感器数据。它还发布了一个带有先进传感器数据的时钟，也就是取代了rosbag play。在其他方面，它就像cartographer_node一样。每个包最终都将成为一个单独的轨迹。一旦处理完所有的数据，它就会写出最终的Cartographer 状态并退出。
+
+3.3 占据栅格节点
+occupancy_grid_node 监听SLAM 发布的submaps，然后构建并发布ROS的occupancy_grid。这个工具为了保持旧节点，需要一个单独的完全统一的地图，直到新的导航堆栈能够立即处理Cartographer’s submaps。生成这个地图比较慢，代价也比较大，所以地图更新是按秒进行排序的。
+
+Subscribed Topics
+
+只订阅Cartographer’s submap_list topic。
+
+Published Topics
+
+map (nav_msgs/OccupancyGrid)
+
+如果被订阅，此节点将连续计算并发布地图。更新的时间随着地图尺寸的增加而增加，为了快速的更新，要使用submaps APIs。
+
+四、Assets writer
+SLAM的目的是通过一个度量空间来计算单个传感器的轨迹。在更高的层面上，SLAM的输入是传感器的数据，它的输出是对轨迹到目前为止的最佳估计。为了实时和高效，Cartographer 将大部分传感器数据立即扔掉。
+
+单独的轨迹没什么用处，但是一旦估计出了最佳轨迹，就可以用全部的传感器数据来推导和显现周围环境的信息。
+
+Cartographer 为此提供资源，输入的是：
+
+1、在ROS的包文件中输入给SLAM最原始的数据，
+
+2、SLAM创建的包含在.pbstream文件中的cartographer状态，
+
+3、传感器的外部特征（即从包里或URDF中获取的TF数据），
+
+4、还有一个定义在.lua文件中的管道配置。
+
+该资源以已知的轨迹分批地运行传感器数据。它可用于各种格式的颜色、过滤器和导出SLAM 点云数据。有关该资源可以使用的更多信息，请参阅下面的示例和cartographer/io中的头文件。
+
+4.1 采样指南
+# Download the 3D backpack example bag.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/backpack_3d/b3-2016-04-05-14-14-00.bag
+
+# Launch the 3D offline demo.
+
+roslaunch cartographer_ros offline_backpack_3d.launch
+
+bag_filenames:=${HOME}/Downloads/b3-2016-04-05-14-14-00.bag
+
+ 
+
+观察命令行上的输出，直到离线节点终止。，在处理完所有数据并完成所有优化之后，描绘的Cartographer 的状态会写入b3-2016-04-05-14-14-00.bag.pbstream。您可以通过运行在线节点和调用来获得相同的状态数据:
+
+
+
+# Finish the first trajectory. No further data will be accepted on it.
+
+rosservice call /finish_trajectory 0
+
+# Ask Cartographer to serialize its current state.
+
+rosservice call /write_state ${HOME}/Downloads/b3-2016-04-05-14-14-00.bag.pbstream
+
+
+
+现在，我们运行3D backpack的采样配置文件：
+
+
+
+roslaunch cartographer_ros assets_writer_backpack_3d.launch \
+
+   bag_filenames:=${HOME}/Downloads/b3-2016-04-05-14-14-00.bag \
+
+   pose_graph_filename:=${HOME}/Downloads/b3-2016-04-05-14-14-00.bag.pbstream
+
+
+
+所有输出文件都是以--output_file_prefix为前缀，该前缀默认为第一个包的文件名。对于最后一个例子，如果你在管道配置文件中指定了points.ply，前缀将变为${HOME}/Downloads/b3-2016-04-05-14-14-00.bag_points.ply。
+
+4.2 配置
+资源的模型是管道。它由一个 PointsProcessors（点处理器）和一个流过它的 PointsBatchs（点流）组成。从第一个处理器到下一个处理器的数据流，都有机会在被传递之前修改PointsBatch（点流）。
+
+例如assets_writer_backpack_3d.lua使用min_max_range_filter来移除离传感器太近或太远的点。之后，它会写X-Rays，然后根据传感器坐标系ID重新画出这个PointsBatch（点流），并且用这些新的颜色来写另一组X-Rays。
+
+每个PointsProcessors（点处理器）都在cartographer/io子目录中，并记录在它们的单独的头文件中。
+
+ 
+
+4.3 点云的第一人称视角的可视化
+一般情况下通过点生成一个fly 需要两步:首先，用你想要可视化的点写一个PLY文件，然后使用point_cloud_viewer。
+
+第一步通常是通过使用IntensityToColorPointsProcessor给将点设置为非白色，,然后使用PlyWritingPointsProcessor写到PLY。这样的例子在assets_writer_backpack_2d.lua。
+
+一旦有了PLY文件，按照point_cloud_viewer的README来生成一个磁盘上的八叉树，该八叉树可以由同一仓库中的查看器查看。
+
+ 
+
+五、Demos
+5.1 仅局部的
+# Pure localization demo in 2D: We use 2 different 2D bags from the Deutsche
+
+# Museum. The first one is used to generate the map, the second to run
+
+# pure localization.
+
+#2D模式下的局部的demo:使用2个不通的德国博物馆的2D包，第一个生成地图，第二个运行仅局部的包.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/backpack_2d/b2-2016-04-05-14-44-52.bag
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/backpack_2d/b2-2016-04-27-12-31-41.bag
+
+# Generate the map: Run the next command, wait until cartographer_offline_node finishes.
+
+#生成地图:运行下个命令，然后一直等到cartographer_offline_node运行结束。
+
+roslaunch cartographer_ros offline_backpack_2d.launch
+
+bag_filenames:=${HOME}/Downloads/b2-2016-04-05-14-44-52.bag
+
+# Run pure localization:
+
+#运行局部化包
+
+roslaunch cartographer_ros demo_backpack_2d_localization.launch \
+
+   map_filename:=${HOME}/Downloads/b2-2016-04-05-14-44-52.bag.pbstream \
+
+   bag_filename:=${HOME}/Downloads/b2-2016-04-27-12-31-41.bag
+
+# Pure localization demo in 3D: We use 2 different 3D bags from the Deutsche
+
+# Museum. The first one is used to generate the map, the second to run
+
+# pure localization.
+
+#3D模式下的局部的demo:使用2个不通的德国博物馆的3D包，第一个生成地图，第二个运行仅局部的包.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/backpack_3d/b3-2016-04-05-13-54-42.bag
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/backpack_3d/b3-2016-04-05-15-52-20.bag
+
+# Generate the map: Run the next command, wait until cartographer_offline_node finishes.
+
+#生成地图:运行下个命令，然后一直等到cartographer_offline_node运行结束。
+
+roslaunch cartographer_ros offline_backpack_3d.launch bag_filenames:=${HOME}/Downloads/b3-2016-04-05-13-54-42.bag
+
+# Run pure localization:
+
+#运行局部化包
+
+roslaunch cartographer_ros demo_backpack_3d_localization.launch \
+
+   map_filename:=${HOME}/Downloads/b3-2016-04-05-13-54-42.bag.pbstream \
+
+   bag_filename:=${HOME}/Downloads/b3-2016-04-05-15-52-20.bag
+
+ 
+
+5.2 Revo LDS
+# Download the Revo LDS example bag.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/revo_lds/cartographer_paper_revo_lds.bag
+
+# Launch the Revo LDS demo.
+
+roslaunch cartographer_ros demo_revo_lds.launch bag_filename:=${HOME}/Downloads/cartographer_paper_revo_lds.bag
+
+ 
+
+5.3 PR2
+# Download the PR2 example bag.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/pr2/2011-09-15-08-32-46.bag
+
+# Launch the PR2 demo.
+
+roslaunch cartographer_ros demo_pr2.launch bag_filename:=${HOME}/Downloads/2011-09-15-08-32-46.bag
+
+ 
+
+5.4 Taurob Tracker
+# Download the Taurob Tracker example bag.
+
+wget -P ~/Downloads https://storage.googleapis.com/cartographer-public-data/bags/taurob_tracker/taurob_tracker_simulation.bag
+
+# Launch the Taurob Tracker demo.
+
+roslaunch cartographer_ros demo_taurob_tracker.launch bag_filename:=${HOME}/Downloads/taurob_tracker_simulation.bag
+
+ 
+
+六、公共数据
+6.1 2D Cartographer Backpack--德国博物馆
+这一数据是在德国博物馆用一个2D LIDAR backpack 采集的。每个包都包含有IMU数据、来自水平LIDAR用于2D SLAM的数据,以及额外的垂直方向的LIDAR数据(即推扫式)。
+
+License
+
+Copyright 2016 The Cartographer Authors
+
+Licensed under the Apache License, Version 2.0 (the “License”); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+除非有法律规定或书面同意，在许可证下发放的软件是在没有任何保证或任何条件下按“AS IS”发放的，无论是明示的还是默示的。请参阅许可下的特定语言管理权限和限制的许可。
+
+Data
+
+见英文版
+
+ 
+6.2 3D Cartographer Backpack--德国博物馆
+这一数据是在德国博物馆用一个3D LIDAR backpack 采集的。每个包都包含有一个IMU数据和2个来自威力登（Velodyne ）VLP-16 LIDARs的数据，一个水平安装的（即紫旋朝上）和一个水平安装的（即推扫式）。
+
+License
+
+Copyright 2016 The Cartographer Authors
+
+Licensed under the Apache License, Version 2.0 (the “License”); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+除非有法律规定或书面同意，在许可证下发放的软件是在没有任何保证或任何条件下按“AS IS”发放的，无论是明示的还是默示的。请参阅许可下的特定语言管理权限和限制的许可。
+
+Data
+
+见英文版
+
+ 
+
+6.3 PR2 柳树车库
+这是柳树车库的数据集，描述为:
+
+“一种面向对象语义的世界模型，用于长期的变化检测和语义查询。”Julian Mason 和Bhaskara Marthi，2012年。
+
+关于这些数据的更多细节参考:
+
+Julian Mason、Ronald Parr和Ronald Parr的“无人监督的对象类发现”。ICRA 2014。
+
+Julian Mason的“用移动机器人发现的物体”。博士论文,2013年。
+
+License
+
+见英文版
+
+Data
+
+见英文版
+
+七、FAQ
+7.1 为什么3D bags里的激光数据比VLP-16最高的20HZ的转速还要高？
+示例包中的VLP-16配置的旋转频率为20Hz。然而，VLP-16发送UDP数据包的频率要比这高得多，并且独立于旋转频率。示例包中的每个个UDP包包含一个sensor_msgs/PointCloud2，而不是每次旋转发布一个。
+
+在相应的Cartographer 配置文件中，您可以看到TRAJECTORY_BUILDER_3D.num_accumulated_range_data = 160，这意味着我们在每个UDP包中累积160个点云成为一个更大的点云，结合恒速和IMU测量，共同组成运动估计来进行匹配。因为有两个VLP-16s，对于每个VLP-16s大约2转的情况，160个UDP包是足够用的。
+
+ 
+
+7.2 为什么IMU数据对于3D SLAM是必须的，对于2D SLAM却不是？
+在2D中，Cartographer 支持运行相关的扫描匹配器，用于局部SLAM中寻找循环关闭的约束条件。它的计算代价很大，但通常会使odometry或IMU数据的加入变得不必要。2D也有假设平坦世界的好处，也就是说，上升是隐式定义的。
+
+在三维中，IMU主要用于测量重力。重力在测量中是一个很有用的量，因为它不漂移，而且是一个非常强的信号，而且通常包含了大部分所要测量的加速度。需要重力是有两个原因的:
+
+1。在三维世界里，没有任何关于这个世界的假设。为了正确地排列轨迹和地图的结果，重力被用来定义z方向。
+
+2。一旦确定了重力方向，就可以很好地从IMU读数中推导出滚动（Roll ）和俯仰（pitch ）。通过减少这些维度中的搜索窗口，可以节省扫描匹配器的工作。
+
+7.3 若没有RVIZ的话，如何使用cartographer_ros?
+最简单的解决方案是在cartographer_rviz包目录中创建一个为CATKIN_IGNORE的空文件。
+
+7.4 如何解决“You called InitGoogleLogging() twice!”错误？
+使用glog的后端构建 rosconsole可能会导致这个错误。使用log4cxx或print后端，可以通过 选择CMake参数ROSCONSOLE_BACKEND ，避免这个问题。
