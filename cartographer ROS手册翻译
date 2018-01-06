@@ -139,11 +139,11 @@ use_odometry
 
 如果使能，将订阅nav_msgs/Odometry类型的topic “odom”，这种情况下，必须提供里程计，而且里程计的信息将被包含在SLAM中。
 
-num_laser_scans
+num_laser_scans（针对单线激光雷达）
 
 订阅的laser scan topics的个数，对于单个激光，订阅sensor_msgs/LaserScan类型的“scan”topic，对于多个激光，topics为“scan_1”, “scan_2”...。
 
-num_multi_echo_laser_scans
+num_multi_echo_laser_scans（针对多线激光雷达）
 
 订阅多回波技术laser scan topics的个数，对于单个激光，订阅sensor_msgs/MultiEchoLaserScan类型的“echoes”topic，对于多个激光，topics为“echoes_1”, “echoes_2”...。
 
@@ -151,7 +151,7 @@ num_subdivisions_per_laser_scan
 
 接收到的（多回波）laser scan中分离出来的点云的个数，分割scan能够保证在激光设备移动的过程中scans不弯曲变形。有相应的轨迹生成器选项可以将分离的scans累积到点云中，用来进行scan matching。
 
-num_point_clouds
+num_point_clouds（这里说的是测距仪而不是激光雷达需要注意）
 
 订阅的点云topics 的个数，对于单个测距仪，订阅sensor_msgs/PointCloud2类型的“points2”topic，对于多个测距仪，topics为“points2_1”, “points2_2”...。
 
