@@ -1,0 +1,18 @@
+cartographer_ros部分代码主要是建立了cartographer在ROS环境下运行的相关接口，好多文件是为了便于模块化管理。对于初步理解记录如下：
+1.assets_writer_main.cc：主要是一个生成pstream的功能，具体的可以参考官方文档；
+2.map_builder_bridge.cc和.h：主要说明了地图创建过程中ROS文件与cartographer源码之间的对应关系；
+3.msg_conversion.cc和.h:主要是对各种消息类型msg进行了一些配置和消息转换。主要规定了用到的各种消息类型；
+4.node_constant.cc和.h：主要对各个topic的名字进行了配置，包括“scan”,"imu","points2"....等进行了配置，重映射之后会改变这些默认的配置；
+5.node_main.cc：对cartographer_node的节点进行了编写，开启节点的时候开始运行；
+6.node_options.cc和.h:主要是对开始时候的.lua文件的内容进行加载，将.lua文件中的相应的参数进行相应的对号入座；和trajectory_options.cc和.h针对的配置侧重点不同
+7.node.cc和.h：建立了ROS topic和SLAM之间的联系，将使用到的所有的节点，已经相应的参数配置和设置情况进行了分别的编写；
+8.occupancy_grid_node_main.cc：主要是在运行.launch文件是最后的部分对网格之类的进行配置；
+9.offline_node_main.cc offline_node.cc offline_node.h:主要用于离线建造地图的情况；
+10.ros_map.cc和ros_map.h：进行的是对地图存储和yaml文件的存储的配置；
+11.sensor_bridge.cc和.h：主要是将ROS的传感器消息，转化为了传感器数据，方便进行mapbuilder；
+12.start_trajectory_main.cc：是ROS程序运行的起点，从这里开始进行路径的建立，首先对各个配置文件加载处理，将相应的配置包括.launch中的重映射进行处理；
+13.submao.cc和.h：主要是对submap的相关操作，如果使用到了可以进行详细的查看；
+14.tf_bridge.cc和.h：主要是对坐标系进行的处理；
+15.time_conversion.cc和.h：时间转换，对时间戳进行的操作；
+16.trajectory_options.cc和.h：对.lua文件中的相关配置参数进行了配置和说明；
+17.urdf.cc和.h：是对urdf文件进行的配置说明。
