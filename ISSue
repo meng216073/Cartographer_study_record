@@ -1,7 +1,16 @@
+I have three questions:
 为什么不在同一个平面，在同一个平面运动生成的地图不在同一个平面，是否与两个激光雷达的位置标定不准确有关？也就是urdf中两个velodyne的相对位置。
+Why are the maps generated not in the same plane？Is it due to the inaccurate position calibration of the two laser radar?
 为什么会有固定角度的偏置？每一圈都相对上一圈偏移一个角度？（地图第三圈从地下车库 的中间穿过。）
+Why has the generated map deflected in one direction?
+Is it because of the problem that I configure, or because of the problem of sensor data?
 为什么没有进行闭环检测，或者说为什么闭环检测没能将问题一和问题二发上的断层和偏移问题补偿回来？需要改进那些参数？
+Why did the generated maps have no closed loop detection?
+Or why does closed loop detection have not solved the problem of faults and deflection in the above problems?
+Because I think the closed-loop detection may be able to solve the above problems.
 rosbag_validate自己的bag文件结果如下，虽然采集了odom数据，但是没有用到，也就是use_odom=false;
+Although Odom data was collected, it was not used
 相关的launch、urdf、lua文件设置如下；
 使用的bag文件链接如下；
 顺便问一下，如果我想生成3D的点云图需要进行哪些修改？
+By the way,what changes do I need to make if I want to generate 3D point cloud map?
