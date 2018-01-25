@@ -4,3 +4,4 @@
 rosbag_validate自己的bag文件结果如下，虽然采集了odom数据，但是没有用到，也就是use_odom=false;
 相关的launch、urdf、lua文件设置如下；
 使用的bag文件链接如下；
+顺便问一下，如果我想生成3D的点云图需要进行哪些修改？
